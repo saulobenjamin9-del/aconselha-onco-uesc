@@ -65,7 +65,7 @@
   }
   .bloco-grid {
     display: grid;
-    grid-template-columns: 1.2fr 1fr 1fr 2.5fr;
+    grid-template-columns: 1.2fr 0.5fr 1fr 1fr 1.5fr 2.5fr;
     gap: 10px; align-items: start;
   }
   .bloco-col { display: flex; flex-direction: column; gap: 4px; }
@@ -99,13 +99,14 @@
     padding: 0 20px 8px; font-style: italic;
   }
 
-  @media (max-width: 700px) {
-    .bloco-grid { grid-template-columns: 1fr 1fr; }
-    .bloco-col:last-child { grid-column: 1 / -1; }
+  @media (max-width: 900px) {
+    .bloco-grid { grid-template-columns: 1.2fr 0.5fr 1fr 1fr; }
   }
-  @media (max-width: 480px) {
+  @media (max-width: 600px) {
+    .bloco-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 400px) {
     .bloco-grid { grid-template-columns: 1fr; }
-    .bloco-col:last-child { grid-column: auto; }
   }
 </style>
 </head>
@@ -272,12 +273,15 @@
       const id = card.dataset.id;
       const tas = card.querySelectorAll("textarea");
       const inp = card.querySelector("input[data-campo='telefone']");
+      const inpIdade = card.querySelector("input[data-campo='idade']");
       const inpData = card.querySelector("input[data-campo='data']");
       await setDoc(doc(db, COLECAO, id), {
         nome: tas[0]?.value || "",
+        idade: inpIdade?.value || "",
         telefone: inp?.value || "",
         data: inpData?.value || "",
-        obs: tas[1]?.value || "",
+        tratamento: tas[1]?.value || "",
+        obs: tas[2]?.value || "",
         ordem: ordem++
       });
     }
@@ -316,12 +320,20 @@
           <textarea data-campo="nome" placeholder="Nome completo" oninput="autoResizeExt(this);agendarSalv()">${esc(d.nome)}</textarea>
         </div>
         <div class="bloco-col">
+          <label>Idade (em anos)</label>
+          <input type="number" data-campo="idade" placeholder="Ex: 45" min="0" max="120" value="${esc(d.idade||'')}" oninput="agendarSalv()">
+        </div>
+        <div class="bloco-col">
           <label>Telefone</label>
           <input type="tel" data-campo="telefone" placeholder="(00) 00000-0000" value="${esc(d.telefone)}" oninput="mascararTelefone(this);agendarSalv()">
         </div>
         <div class="bloco-col">
           <label>Data</label>
           <input type="text" data-campo="data" placeholder="Ex: 10/06 – retorno" value="${esc(d.data)}" oninput="agendarSalv()">
+        </div>
+        <div class="bloco-col">
+          <label>Tratamento atual</label>
+          <textarea data-campo="tratamento" placeholder="Protocolo de tratamento..." oninput="autoResizeExt(this);agendarSalv()">${esc(d.tratamento||'')}</textarea>
         </div>
         <div class="bloco-col">
           <label>Observações</label>
