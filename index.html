@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Voz do Abraço UESC</title>
+<!-- EmailJS: envia notificação automática por email quando um novo cadastro pendente é criado -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #DDD5CF; min-height: 100vh; }
@@ -29,13 +31,35 @@
     width: 100%; padding: 9px 11px; border: 0.5px solid #c9c2bc;
     border-radius: 8px; background: #f9f7f5; font-size: 14px; color: #333;
   }
+  .campo-senha-wrap { position: relative; }
+  .campo-senha-wrap input { padding-right: 38px; }
+  .btn-olho {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 26px; height: 26px; border: none; background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: #888; padding: 0;
+  }
+  .btn-olho:hover { color: #555; }
+  .btn-olho svg { width: 19px; height: 19px; }
+  .senha-obs {
+    font-size: 11.5px; color: #888; line-height: 1.4; margin-top: -2px;
+  }
   .login-btn {
     padding: 10px; border: 0.5px solid #b0a9a3; border-radius: 8px;
     background: #c9c2bc; color: #444; font-size: 14px; cursor: pointer; margin-top: 4px;
   }
   .login-btn:hover { background: #bfb8b2; }
+  .login-btn:disabled { opacity: 0.6; cursor: default; }
   .login-error { color: #a33; font-size: 13px; text-align: center; display: none; }
+  .login-info { color: #5a7a66; font-size: 13px; text-align: center; display: none; line-height: 1.4; }
   .login-loading { color: #777; font-size: 13px; text-align: center; display: none; }
+  .toggle-modo {
+    text-align: center; font-size: 13px; color: #777; margin-top: 2px;
+  }
+  .toggle-modo button {
+    background: none; border: none; color: #6b7d72; font-size: 13px;
+    text-decoration: underline; cursor: pointer; padding: 0;
+  }
+  .toggle-modo button:hover { color: #4d5b51; }
 
   /* MAIN */
   #main-screen { display: none; flex-direction: column; min-height: 100vh; background: #DDD5CF; }
@@ -120,7 +144,7 @@
 </head>
 <body>
 
-<!-- TELA DE LOGIN -->
+<!-- TELA DE LOGIN / CADASTRO -->
 <div id="login-screen">
   <div class="logo-row">
     <img src="brasao-uesc.png" alt="Brasão UESC" onerror="this.style.display='none'">
@@ -128,17 +152,40 @@
   </div>
   <p class="welcome-text">Olá, seja bem-vindo ao site Voz do Abraço UESC</p>
   <div class="login-box">
+
+    <div id="campo-nome">
+      <label>Nome completo</label>
+      <input type="text" id="inp-nome" placeholder="Seu nome completo" autocomplete="name">
+    </div>
+
     <div>
-      <label>Login</label>
+      <label>Gmail</label>
       <input type="email" id="inp-email" placeholder="usuario@gmail.com" autocomplete="username">
     </div>
+
     <div>
       <label>Senha</label>
-      <input type="password" id="inp-senha" placeholder="Insira a senha" autocomplete="current-password">
+      <div class="campo-senha-wrap">
+        <input type="password" id="inp-senha" placeholder="Insira a senha" autocomplete="current-password">
+        <button type="button" class="btn-olho" id="btn-olho" aria-label="Mostrar senha" onclick="alternarSenha()">
+          <svg id="icone-olho" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+      <p class="senha-obs" id="obs-senha-cadastro">OBS: A senha é uma senha nova, criada aqui, sem nenhuma relação com a senha do Gmail.</p>
     </div>
-    <p class="login-error" id="login-error">Login ou senha incorretos.</p>
+
+    <p class="login-error" id="login-error"></p>
+    <p class="login-info" id="login-info"></p>
     <p class="login-loading" id="login-loading">Carregando...</p>
-    <button class="login-btn" onclick="tentarLogin()">Entrar</button>
+
+    <button class="login-btn" id="btn-acao" onclick="tentarAcao()">Criar conta</button>
+
+    <p class="toggle-modo" id="toggle-modo">
+      Já tem uma conta aprovada? <button type="button" onclick="alternarModo()">Entrar</button>
+    </p>
   </div>
 </div>
 
@@ -163,8 +210,12 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
   import {
-    getFirestore, collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy
+    getFirestore, collection, doc, getDocs, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy
   } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+  import {
+    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    onAuthStateChanged, signOut, updateProfile
+  } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBkYGQ-_R3gWNveNyI-1wQopVGKs1mQxco",
@@ -177,10 +228,33 @@
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
+  const auth = getAuth(app);
   const COLECAO = "blocos";
+  const COLECAO_USUARIOS = "usuarios";
 
-  const EMAIL_OK = "vozdoabracouesc@gmail.com";
-  const SENHA_OK = "Paliativo";
+  // ── EMAILJS: notificação automática de novo cadastro pendente ──
+  const EMAILJS_PUBLIC_KEY = "hqEtMfxGCZ_b-9XaP";
+  const EMAILJS_SERVICE_ID = "service_o7ya0tg";
+  const EMAILJS_TEMPLATE_ID = "template_sbd5c6b";
+  if (window.emailjs) {
+    window.emailjs.init(EMAILJS_PUBLIC_KEY);
+  }
+
+  async function notificarNovoCadastro(nome, email) {
+    if (!window.emailjs) {
+      console.error("EmailJS não carregou — verifique a conexão ou se o script foi bloqueado.");
+      return;
+    }
+    try {
+      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { nome, email });
+    } catch (e) {
+      // Falha no envio do email não deve impedir o cadastro do usuário,
+      // então só registramos no console em vez de mostrar erro pra pessoa.
+      console.error("Falha ao enviar email de notificação:", e);
+    }
+  }
+
+  let modoCadastro = true; // tela abre em modo "Criar conta" por padrão
 
   let unsubscribe = null;
   let salvandoLocal = false; // flag para evitar loop ao receber do Firestore
@@ -210,35 +284,140 @@
     document.getElementById("sync-status").textContent = msg;
   }
 
-  // ── LOGIN ──────────────────────────────────────────────────────
-  window.tentarLogin = function() {
-    const e = document.getElementById("inp-email").value.trim();
-    const s = document.getElementById("inp-senha").value;
+  // ── LOGIN / CADASTRO ──────────────────────────────────────────
+  function mostrarErro(msg) {
     const err = document.getElementById("login-error");
-    const loading = document.getElementById("login-loading");
+    const info = document.getElementById("login-info");
+    info.style.display = "none";
+    err.textContent = msg;
+    err.style.display = "block";
+  }
 
-    if (e === EMAIL_OK && s === SENHA_OK) {
-      err.style.display = "none";
-      loading.style.display = "block";
+  function mostrarInfo(msg) {
+    const err = document.getElementById("login-error");
+    const info = document.getElementById("login-info");
+    err.style.display = "none";
+    info.textContent = msg;
+    info.style.display = "block";
+  }
+
+  function limparMensagens() {
+    document.getElementById("login-error").style.display = "none";
+    document.getElementById("login-info").style.display = "none";
+  }
+
+  function setCarregando(ligado) {
+    document.getElementById("login-loading").style.display = ligado ? "block" : "none";
+    document.getElementById("btn-acao").disabled = ligado;
+  }
+
+  window.alternarSenha = function() {
+    const inp = document.getElementById("inp-senha");
+    const icone = document.getElementById("icone-olho");
+    const mostrando = inp.type === "text";
+    inp.type = mostrando ? "password" : "text";
+    // olho aberto = mostrando a senha; olho fechado (com risco) = senha oculta
+    icone.innerHTML = mostrando
+      ? '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"></path><circle cx="12" cy="12" r="3"></circle>'
+      : '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 4.22-5.06"></path><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"></path><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+  };
+
+  window.alternarModo = function() {
+    modoCadastro = !modoCadastro;
+    limparMensagens();
+    document.getElementById("campo-nome").style.display = modoCadastro ? "block" : "none";
+    document.getElementById("obs-senha-cadastro").style.display = modoCadastro ? "block" : "none";
+    document.getElementById("btn-acao").textContent = modoCadastro ? "Criar conta" : "Entrar";
+    document.getElementById("toggle-modo").innerHTML = modoCadastro
+      ? 'Já tem uma conta aprovada? <button type="button" onclick="alternarModo()">Entrar</button>'
+      : 'Ainda não tem conta? <button type="button" onclick="alternarModo()">Criar conta</button>';
+  };
+
+  window.tentarAcao = function() {
+    if (modoCadastro) criarConta(); else fazerLogin();
+  };
+
+  async function criarConta() {
+    const nome = document.getElementById("inp-nome").value.trim();
+    const email = document.getElementById("inp-email").value.trim();
+    const senha = document.getElementById("inp-senha").value;
+    limparMensagens();
+
+    if (!nome) return mostrarErro("Informe seu nome completo.");
+    if (!email) return mostrarErro("Informe seu Gmail.");
+    if (senha.length < 6) return mostrarErro("A senha precisa ter pelo menos 6 caracteres.");
+
+    setCarregando(true);
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, senha);
+      await updateProfile(cred.user, { displayName: nome });
+      await setDoc(doc(db, COLECAO_USUARIOS, cred.user.uid), {
+        nome, email, status: "pendente", criadoEm: new Date().toISOString()
+      });
+      notificarNovoCadastro(nome, email); // dispara o email em segundo plano, sem bloquear o fluxo
+      await signOut(auth);
+      setCarregando(false);
+      mostrarInfo("Conta criada! Aguarde a aprovação do administrador para conseguir entrar. Você será avisado(a) quando o acesso for liberado.");
+      document.getElementById("inp-senha").value = "";
+    } catch (e) {
+      setCarregando(false);
+      if (e.code === "auth/email-already-in-use") {
+        mostrarErro("Este Gmail já está cadastrado. Tente entrar em vez de criar uma nova conta.");
+      } else if (e.code === "auth/invalid-email") {
+        mostrarErro("Gmail inválido.");
+      } else {
+        mostrarErro("Não foi possível criar a conta. Tente novamente.");
+        console.error(e);
+      }
+    }
+  }
+
+  async function fazerLogin() {
+    const email = document.getElementById("inp-email").value.trim();
+    const senha = document.getElementById("inp-senha").value;
+    limparMensagens();
+    if (!email || !senha) return mostrarErro("Preencha o Gmail e a senha.");
+
+    setCarregando(true);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, senha);
+      const snap = await getDoc(doc(db, COLECAO_USUARIOS, cred.user.uid));
+      const status = snap.exists() ? snap.data().status : "pendente";
+
+      if (status !== "aprovado") {
+        await signOut(auth);
+        setCarregando(false);
+        mostrarInfo("Seu acesso ainda não foi aprovado pelo administrador. Tente novamente mais tarde.");
+        return;
+      }
+
+      setCarregando(false);
       document.getElementById("login-screen").style.display = "none";
-      loading.style.display = "none";
       document.getElementById("main-screen").style.display = "flex";
       iniciarEscuta();
-    } else {
-      err.style.display = "block";
+    } catch (e) {
+      setCarregando(false);
+      if (e.code === "auth/invalid-credential" || e.code === "auth/wrong-password" || e.code === "auth/user-not-found") {
+        mostrarErro("Gmail ou senha incorretos.");
+      } else {
+        mostrarErro("Não foi possível entrar. Tente novamente.");
+        console.error(e);
+      }
     }
-  };
+  }
 
   window.sair = function() {
     if (unsubscribe) unsubscribe();
+    signOut(auth);
     document.getElementById("main-screen").style.display = "none";
     document.getElementById("login-screen").style.display = "flex";
     document.getElementById("inp-senha").value = "";
     document.getElementById("blocos-container").innerHTML = "";
+    limparMensagens();
   };
 
   document.getElementById("inp-senha").addEventListener("keydown", e => {
-    if (e.key === "Enter") window.tentarLogin();
+    if (e.key === "Enter") window.tentarAcao();
   });
 
   // ── FIRESTORE: ESCUTA EM TEMPO REAL ───────────────────────────
