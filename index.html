@@ -240,13 +240,14 @@
     window.emailjs.init(EMAILJS_PUBLIC_KEY);
   }
 
-  async function notificarNovoCadastro(nome, email) {
+  async function notificarNovoCadastro(nome, email, uid) {
     if (!window.emailjs) {
       console.error("EmailJS não carregou — verifique a conexão ou se o script foi bloqueado.");
       return;
     }
+    const linkFirestore = `https://console.firebase.google.com/project/aconselha-onco-uesc/firestore/data/~2Fusuarios~2F${uid}`;
     try {
-      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { nome, email });
+      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { nome, email, link: linkFirestore });
     } catch (e) {
       // Falha no envio do email não deve impedir o cadastro do usuário,
       // então só registramos no console em vez de mostrar erro pra pessoa.
@@ -354,7 +355,7 @@
       await setDoc(doc(db, COLECAO_USUARIOS, cred.user.uid), {
         nome, email, status: "pendente", criadoEm: new Date().toISOString()
       });
-      notificarNovoCadastro(nome, email); // dispara o email em segundo plano, sem bloquear o fluxo
+      notificarNovoCadastro(nome, email, cred.user.uid); // dispara o email em segundo plano, sem bloquear o fluxo
       await signOut(auth);
       setCarregando(false);
       mostrarInfo("Conta criada! Aguarde a aprovação do administrador para conseguir entrar. Você será avisado(a) quando o acesso for liberado.");
